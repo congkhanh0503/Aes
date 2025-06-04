@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Chat App</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .app-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            max-width: 1200px;
+            width: 100%;
+            overflow: hidden;
+        }
+        
+        .login-container {
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        
+        .chat-container {
+            display: none;
+            height: 700px;
+            display: flex;
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: rgba(255, 255, 255, 0.8);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .avatar.small {
+            width: 30px;
+            height: 30px;
+            font-size: 12px;
+        }
+        
+        .user-info h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 2px;
+        }
+        
+        .user-info p {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .online-users {
+            flex: 1;
+        }
+        
+        .online-users h4 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .user-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+        }
+        
+        .user-item:hover {
+            background: rgba(102, 126, 234, 0.05);
+        }
+        
+        .user-item span {
+            flex: 1;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #4CAF50;
+            border-radius: 50%;
+            margin-left: auto;
+        }
+        
+        .main-chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+        
+        .chat-header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .chat-header h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .room-info {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 12px;
+            margin-bottom: 20px;
+            max-height: 400px;
+        }
+        
+        .message {
+            display: flex;
+            margin-bottom: 15px;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.sent {
+            justify-content: flex-end;
+        }
+        
+        .message-content {
+            max-width: 70%;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .message.sent .message-content {
+            flex-direction: row-reverse;
+        }
+        
+        .message-bubble {
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            position: relative;
+        }
+        
+        .message:not(.sent) .message-bubble {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .message.sent .message-bubble {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .message-sender {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 2px;
+            color: #666;
+        }
+        
+        .message.sent .message-sender {
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .message-text {
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .system-message {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            font-size: 13px;
+            margin: 10px 0;
+        }
+        
+        .input-area {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 12px;
+            font-size: 14px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            background: rgba(255, 255, 255, 0.8);
+        }
+        
+        input[type="text"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        #message-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 25px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.8);
+        }
+        
+        #message-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .avatar-upload-container {
+            text-align: center;
+        }
+        
+        .current-avatar {
+            margin-bottom: 15px;
+        }
+        
+        .avatar-preview {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 24px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .avatar-preview:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .avatar-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+        
+        .avatar-upload-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+        
+        .avatar-options {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        .avatar-btn {
+            padding: 8px 16px;
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .avatar-btn:hover {
+            background: rgba(102, 126, 234, 0.2);
+            transform: translateY(-1px);
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: auto;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            transition: background-color 0.3s;
+        }
+        
+        .status-dot.online {
+            background: #4CAF50;
+        }
+        
+        .status-dot.away {
+            background: #FF9800;
+        }
+        
+        .status-dot.offline {
+            background: #9E9E9E;
+        }
+        
+        .status-text {
+            font-size: 10px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .user-item.away {
+            opacity: 0.7;
+        }
+        
+        .user-item.offline {
+            opacity: 0.5;
+        }
+        
+        .info {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-top: 15px;
+        }
+        
+        .logout-btn {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            padding: 8px 16px;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        
+        @media (max-width: 768px) {
+            .chat-container {
+                flex-direction: column;
+                height: auto;
+            }
+            
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            }
+            
+            .online-users {
+                display: none;
+            }
+        }
+        /* Thêm vào phần CSS hiện có */
+.message.private .message-bubble {
+    background: #fff8e1 !important;
+    border: 1px solid #ffd54f;
+}
+
+.message.sent.private .message-bubble {
+    background: #e3f2fd !important;
+    border: 1px solid #64b5f6;
+}
+
+.private-label {
+    font-size: 10px;
+    color: #666;
+    margin-bottom: 5px;
+    text-align: center;
+    font-style: italic;
+}
+
+.pm-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    margin-left: 5px;
+    font-size: 12px;
+    color: #667eea;
+    transition: transform 0.2s;
+}
+
+.pm-btn:hover {
+    transform: scale(1.2);
+    color: #764ba2;
+}
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Login Screen -->
+        <div class="login-container" id="login-screen">
+            <h1 style="color: #333; margin-bottom: 30px;">🔐 Secure Chat</h1>
+            <p style="color: #666; margin-bottom: 30px;">Join encrypted conversations</p>
+            
+            <div class="form-group">
+                <label for="username">Your Name</label>
+                <input type="text" id="username" placeholder="Enter your name">
+            </div>
+            
+            <div class="form-group">
+                <label>Choose Avatar</label>
+                <div class="avatar-upload-container">
+                    <div class="current-avatar">
+                        <div class="avatar-preview" id="avatar-preview">
+                            <span id="avatar-placeholder">😊</span>
+                            <img id="avatar-image" style="display: none;" alt="Avatar">
+                        </div>
+                        <div class="avatar-upload-text">Click to upload image</div>
+                    </div>
+                    <input type="file" id="avatar-upload" accept="image/*" style="display: none;">
+                    <div class="avatar-options">
+                        <button type="button" class="avatar-btn" id="upload-btn">📁 Upload Image</button>
+                        <button type="button" class="avatar-btn" id="default-btn">😊 Use Default</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="room">Room ID</label>
+                <input type="text" id="room" placeholder="Enter room ID">
+            </div>
+            
+            <div class="form-group">
+                <label for="key">Encryption Key (16, 24 or 32 chars)</label>
+                <input type="password" id="key" placeholder="Enter encryption key">
+            </div>
+            
+            <button id="join-btn">Join Room</button>
+            
+            <div class="info">
+                All messages are end-to-end encrypted with AES
+            </div>
+        </div>
+        
+        <!-- Chat Screen -->
+        <div class="chat-container" id="chat-screen">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="user-profile">
+                    <div class="avatar" id="current-user-avatar">😊</div>
+                    <div class="user-info">
+                        <h3 id="current-username">User</h3>
+                        <p id="current-room">Room: #general</p>
+                    </div>
+                </div>
+                
+                <div class="online-users">
+                    <h4>Online Users (<span id="user-count">0</span>)</h4>
+                    <div class="user-list" id="user-list">
+                        <!-- Users will be populated here -->
+                    </div>
+                </div>
+                
+                <button class="logout-btn" id="logout-btn">Logout</button>
+            </div>
+            
+            <!-- Main Chat Area -->
+            <div class="main-chat">
+                <div class="chat-header">
+                    <h1>Secure Chat</h1>
+                    <div class="room-info">
+                        Room: <strong id="room-display">#general</strong> | 
+                        🔒 End-to-end encrypted
+                    </div>
+                </div>
+                
+                <div id="chat-messages" class="chat-messages"></div>
+                
+                <div class="input-area">
+                    <input type="text" id="message-input" placeholder="Type your message...">
+                    <button id="send-btn">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        
+        // DOM Elements
+        const loginScreen = document.getElementById('login-screen');
+        const chatScreen = document.getElementById('chat-screen');
+        const joinBtn = document.getElementById('join-btn');
+        const sendBtn = document.getElementById('send-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const usernameInput = document.getElementById('username');
+        const roomInput = document.getElementById('room');
+        const keyInput = document.getElementById('key');
+        const messageInput = document.getElementById('message-input');
+        const chatMessages = document.getElementById('chat-messages');
+        const currentUserAvatar = document.getElementById('current-user-avatar');
+        const currentUsername = document.getElementById('current-username');
+        const currentRoom = document.getElementById('current-room');
+        const roomDisplay = document.getElementById('room-display');
+        const userList = document.getElementById('user-list');
+        const userCount = document.getElementById('user-count');
+        
+        // Avatar elements
+        const avatarUpload = document.getElementById('avatar-upload');
+        const avatarPreview = document.getElementById('avatar-preview');
+        const avatarPlaceholder = document.getElementById('avatar-placeholder');
+        const avatarImage = document.getElementById('avatar-image');
+        const uploadBtn = document.getElementById('upload-btn');
+        const defaultBtn = document.getElementById('default-btn');
+        
+        // State
+        let currentRoomId = '';
+        let currentKey = '';
+        let currentUser = '';
+        let selectedAvatar = '😊';
+        let avatarType = 'emoji'; // 'emoji' or 'image'
+        let avatarData = null;
+        let onlineUsers = new Map();
+        let userActivity = new Map();
+        let activityTimeout;
+        
+        // Avatar handling
+        uploadBtn.addEventListener('click', () => {
+            avatarUpload.click();
+        });
+        
+        defaultBtn.addEventListener('click', () => {
+            avatarType = 'emoji';
+            selectedAvatar = '😊';
+            avatarData = null;
+            avatarPlaceholder.style.display = 'block';
+            avatarImage.style.display = 'none';
+            avatarPlaceholder.textContent = selectedAvatar;
+        });
+        
+        avatarPreview.addEventListener('click', () => {
+            avatarUpload.click();
+        });
+        
+        avatarUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.size > 2 * 1024 * 1024) { // 2MB limit
+                    alert('Image file must be smaller than 2MB');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    avatarType = 'image';
+                    avatarData = e.target.result;
+                    selectedAvatar = avatarData;
+                    
+                    avatarImage.src = avatarData;
+                    avatarImage.style.display = 'block';
+                    avatarPlaceholder.style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        // Activity tracking
+        let lastActivity = Date.now();
+        
+        function updateActivity() {
+            lastActivity = Date.now();
+            if (currentRoomId) {
+                socket.emit('user_activity', {
+                    room: currentRoomId,
+                    username: currentUser,
+                    status: 'online'
+                });
+            }
+        }
+        
+        // Track user activity
+        document.addEventListener('mousemove', updateActivity);
+        document.addEventListener('keypress', updateActivity);
+        document.addEventListener('click', updateActivity);
+        document.addEventListener('scroll', updateActivity);
+        
+        // Check for inactivity every 30 seconds
+        setInterval(() => {
+            const now = Date.now();
+            const timeSinceActivity = now - lastActivity;
+            
+            if (currentRoomId) {
+                let status = 'online';
+                if (timeSinceActivity > 300000) { // 5 minutes
+                    status = 'offline';
+                } else if (timeSinceActivity > 120000) { // 2 minutes
+                    status = 'away';
+                }
+                
+                socket.emit('user_activity', {
+                    room: currentRoomId,
+                    username: currentUser,
+                    status: status
+                });
+            }
+        }, 30000);
+        
+        // Avatar Selection (removed old code)
+        // Set default avatar
+        selectedAvatar = '😊';
+        
+        // Encryption/Decryption functions
+        async function encryptMessage(message, key) {
+            try {
+                const response = await fetch('/encrypt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, key })
+                });
+                const data = await response.json();
+                return data.encrypted_message || null;
+            } catch (error) {
+                console.error('Encryption error:', error);
+                return null;
+            }
+        }
+        
+        async function decryptMessage(encryptedMessage, key) {
+            try {
+                const response = await fetch('/decrypt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ encrypted_message: encryptedMessage, key })
+                });
+                const data = await response.json();
+                return data.decrypted_message || null;
+            } catch (error) {
+                console.error('Decryption error:', error);
+                return null;
+            }
+        }
+        
+        // Join Room
+        joinBtn.addEventListener('click', async () => {
+            const username = usernameInput.value.trim();
+            const room = roomInput.value.trim();
+            const key = keyInput.value.trim();
+            
+            if (!username || !room || !key) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            if (key.length !== 16 && key.length !== 24 && key.length !== 32) {
+                alert('Encryption key must be 16, 24 or 32 characters long');
+                return;
+            }
+            
+            currentUser = username;
+            currentRoomId = room;
+            currentKey = key;
+            
+            // Update UI
+            if (avatarType === 'image') {
+                currentUserAvatar.innerHTML = `<img src="${avatarData}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" alt="Avatar">`;
+            } else {
+                currentUserAvatar.textContent = selectedAvatar;
+            }
+            currentUsername.textContent = username;
+            currentRoom.textContent = `Room: #${room}`;
+            roomDisplay.textContent = `#${room}`;
+            
+            // Join room via socket
+            socket.emit('join', {
+                room: room,
+                key: key,
+                username: username,
+                avatar: selectedAvatar,
+                avatarType: avatarType,
+                avatarData: avatarData
+            });
+            
+            // Switch to chat screen
+            loginScreen.style.display = 'none';
+            chatScreen.style.display = 'flex';
+            
+            addSystemMessage(`Welcome to room #${room}! Messages are encrypted.`);
+            messageInput.focus();
+        });
+        
+        // Send Message
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            const encryptedMessage = await encryptMessage(message, currentKey);
+            
+            if (encryptedMessage) {
+                socket.emit('message', {
+                    room: currentRoomId,
+                    message: encryptedMessage,
+                    sender: currentUser,
+                    avatar: selectedAvatar,
+                    avatarType: avatarType,
+                    avatarData: avatarData
+                });
+                
+                addMessage(currentUser, message, selectedAvatar, avatarType, avatarData, true);
+                messageInput.value = '';
+            } else {
+                alert('Failed to encrypt message');
+            }
+        }
+        
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Logout
+        logoutBtn.addEventListener('click', () => {
+            socket.emit('leave', {
+                room: currentRoomId,
+                username: currentUser
+            });
+            
+            loginScreen.style.display = 'block';
+            chatScreen.style.display = 'none';
+            chatMessages.innerHTML = '';
+            onlineUsers.clear();
+            updateUserList();
+            
+            // Reset form
+            usernameInput.value = '';
+            roomInput.value = '';
+            keyInput.value = '';
+            messageInput.value = '';
+        });
+        
+        // Socket Events
+        socket.on('message', async (data) => {
+            if (data.room === currentRoomId && data.sender !== currentUser) {
+                const decryptedMessage = await decryptMessage(data.message, currentKey);
+                
+                if (decryptedMessage) {
+                    addMessage(data.sender, decryptedMessage, data.avatar, data.avatarType || 'emoji', data.avatarData, false);
+                } else {
+                    addSystemMessage('Failed to decrypt a message');
+                }
+            }
+        });
+        
+        socket.on('user_joined', (data) => {
+            if (data.room === currentRoomId) {
+                onlineUsers.set(data.username, {
+                    avatar: data.avatar,
+                    avatarType: data.avatarType || 'emoji',
+                    avatarData: data.avatarData,
+                    joinTime: Date.now(),
+                    status: 'online'
+                });
+                updateUserList();
+                if (data.username !== currentUser) {
+                    addSystemMessage(`${data.username} joined the room`);
+                }
+            }
+        });
+        
+        socket.on('user_left', (data) => {
+            if (data.room === currentRoomId) {
+                onlineUsers.delete(data.username);
+                updateUserList();
+                addSystemMessage(`${data.username} left the room`);
+            }
+        });
+        
+        socket.on('user_list', (data) => {
+            if (data.room === currentRoomId) {
+                onlineUsers.clear();
+                data.users.forEach(user => {
+                    onlineUsers.set(user.username, {
+                        avatar: user.avatar,
+                        avatarType: user.avatarType || 'emoji',
+                        avatarData: user.avatarData,
+                        joinTime: Date.now(),
+                        status: user.status || 'online'
+                    });
+                });
+                updateUserList();
+            }
+        });
+        
+        socket.on('user_status_update', (data) => {
+            if (data.room === currentRoomId && onlineUsers.has(data.username)) {
+                const userData = onlineUsers.get(data.username);
+                userData.status = data.status;
+                onlineUsers.set(data.username, userData);
+                updateUserList();
+            }
+        });
+        
+        // UI Functions
+        function addMessage(sender, message, avatar, avatarType = 'emoji', avatarData = null, isSent = false) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            if (isSent) messageElement.classList.add('sent');
+            
+            const messageContent = document.createElement('div');
+            messageContent.classList.add('message-content');
+            
+            const avatarElement = document.createElement('div');
+            avatarElement.classList.add('avatar', 'small');
+            
+            if (avatarType === 'image' && avatarData) {
+                avatarElement.innerHTML = `<img src="${avatarData}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" alt="Avatar">`;
+            } else {
+                avatarElement.textContent = avatar;
+            }
+            
+            const messageBubble = document.createElement('div');
+            messageBubble.classList.add('message-bubble');
+            
+            if (!isSent) {
+                const senderElement = document.createElement('div');
+                senderElement.classList.add('message-sender');
+                senderElement.textContent = sender;
+                messageBubble.appendChild(senderElement);
+            }
+            
+            const textElement = document.createElement('div');
+            textElement.classList.add('message-text');
+            textElement.textContent = message;
+            messageBubble.appendChild(textElement);
+            
+            messageContent.appendChild(avatarElement);
+            messageContent.appendChild(messageBubble);
+            messageElement.appendChild(messageContent);
+            
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function addSystemMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('system-message');
+            messageElement.textContent = message;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function updateUserList() {
+            userList.innerHTML = '';
+            userCount.textContent = onlineUsers.size;
+            
+            onlineUsers.forEach((userData, username) => {
+                const userItem = document.createElement('div');
+                userItem.classList.add('user-item');
+                
+                // Add status class
+                if (userData.status === 'away') {
+                    userItem.classList.add('away');
+                } else if (userData.status === 'offline') {
+                    userItem.classList.add('offline');
+                }
+                
+                const avatar = document.createElement('div');
+                avatar.classList.add('avatar', 'small');
+                
+                if (userData.avatarType === 'image' && userData.avatarData) {
+                    avatar.innerHTML = `<img src="${userData.avatarData}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" alt="Avatar">`;
+                } else {
+                    avatar.textContent = userData.avatar;
+                }
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = username;
+                
+                const statusIndicator = document.createElement('div');
+                statusIndicator.classList.add('status-indicator');
+                
+                const statusDot = document.createElement('div');
+                statusDot.classList.add('status-dot', userData.status || 'online');
+                
+                const statusText = document.createElement('span');
+                statusText.classList.add('status-text');
+                statusText.textContent = userData.status || 'online';
+                
+                statusIndicator.appendChild(statusDot);
+                statusIndicator.appendChild(statusText);
+                
+                userItem.appendChild(avatar);
+                userItem.appendChild(nameSpan);
+                userItem.appendChild(statusIndicator);
+                
+                userList.appendChild(userItem);
+            });
+        }
+        // Thêm vào phần script, sau các hàm hiện có
+
+// Hàm gửi tin nhắn riêng
+async function sendPrivateMessage(recipient) {
+    const message = prompt(`Send private message to ${recipient}:`);
+    if (!message) return;
+    
+    const encryptedMessage = await encryptMessage(message, currentKey);
+    
+    if (encryptedMessage) {
+        socket.emit('private_message', {
+            recipient: recipient,
+            message: encryptedMessage
+        });
+    } else {
+        alert('Failed to encrypt private message');
+    }
+}
+
+// Hàm hiển thị tin nhắn riêng
+function addPrivateMessage(sender, message, avatar, avatarType = 'emoji', avatarData = null, isSent = false) {
+    const messageElement = document.createElement('div');
+    messageElement.classList.add('message', 'private');
+    if (isSent) messageElement.classList.add('sent');
+    
+    const privateLabel = document.createElement('div');
+    privateLabel.classList.add('private-label');
+    privateLabel.textContent = isSent ? `Private to ${sender}` : `Private from ${sender}`;
+    
+    const messageContent = document.createElement('div');
+    messageContent.classList.add('message-content');
+    
+    const avatarElement = document.createElement('div');
+    avatarElement.classList.add('avatar', 'small');
+    
+    if (avatarType === 'image' && avatarData) {
+        avatarElement.innerHTML = `<img src="${avatarData}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" alt="Avatar">`;
+    } else {
+        avatarElement.textContent = avatar;
+    }
+    
+    const messageBubble = document.createElement('div');
+    messageBubble.classList.add('message-bubble');
+    
+    const textElement = document.createElement('div');
+    textElement.classList.add('message-text');
+    textElement.textContent = message;
+    messageBubble.appendChild(textElement);
+    
+    messageContent.appendChild(avatarElement);
+    messageContent.appendChild(messageBubble);
+    
+    messageElement.appendChild(privateLabel);
+    messageElement.appendChild(messageContent);
+    
+    chatMessages.appendChild(messageElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Thêm sự kiện click cho mỗi user trong danh sách
+function updateUserList() {
+    userList.innerHTML = '';
+    userCount.textContent = onlineUsers.size;
+    
+    onlineUsers.forEach((userData, username) => {
+        const userItem = document.createElement('div');
+        userItem.classList.add('user-item');
+        
+        if (userData.status === 'away') {
+            userItem.classList.add('away');
+        } else if (userData.status === 'offline') {
+            userItem.classList.add('offline');
+        }
+        
+        const avatar = document.createElement('div');
+        avatar.classList.add('avatar', 'small');
+        
+        if (userData.avatarType === 'image' && userData.avatarData) {
+            avatar.innerHTML = `<img src="${userData.avatarData}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" alt="Avatar">`;
+        } else {
+            avatar.textContent = userData.avatar;
+        }
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = username;
+        
+        const statusIndicator = document.createElement('div');
+        statusIndicator.classList.add('status-indicator');
+        
+        const statusDot = document.createElement('div');
+        statusDot.classList.add('status-dot', userData.status || 'online');
+        
+        const statusText = document.createElement('span');
+        statusText.classList.add('status-text');
+        statusText.textContent = userData.status || 'online';
+        
+        statusIndicator.appendChild(statusDot);
+        statusIndicator.appendChild(statusText);
+        
+        // Thêm nút tin nhắn riêng
+        const pmButton = document.createElement('button');
+        pmButton.classList.add('pm-btn');
+        pmButton.innerHTML = '✉️';
+        pmButton.title = 'Send private message';
+        pmButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sendPrivateMessage(username);
+        });
+        
+        userItem.appendChild(avatar);
+        userItem.appendChild(nameSpan);
+        userItem.appendChild(statusIndicator);
+        userItem.appendChild(pmButton);
+        
+        userList.appendChild(userItem);
+    });
+}
+
+// Thêm các socket listeners mới
+socket.on('private_message', async (data) => {
+    if (data.recipient === currentUser) {
+        const decryptedMessage = await decryptMessage(data.message, currentKey);
+        
+        if (decryptedMessage) {
+            addPrivateMessage(
+                data.sender, 
+                decryptedMessage, 
+                data.avatar, 
+                data.avatarType || 'emoji', 
+                data.avatarData, 
+                false
+            );
+        } else {
+            addSystemMessage('Failed to decrypt a private message');
+        }
+    }
+});
+
+socket.on('private_message_sent', async (data) => {
+    if (data.sender === currentUser) {
+        const decryptedMessage = await decryptMessage(data.message, currentKey);
+        
+        if (decryptedMessage) {
+            addPrivateMessage(
+                data.recipient, 
+                decryptedMessage, 
+                data.avatar, 
+                data.avatarType || 'emoji', 
+                data.avatarData, 
+                true
+            );
+        }
+    }
+});
+    </script>
+</body>
+</html>
